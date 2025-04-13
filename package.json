@@ -1,0 +1,35 @@
+{
+  "name": "google-docs-mcp",
+  "version": "1.0.0",
+  "description": "MCP server",
+  "license": "MIT",
+  "author": "",
+  "type": "module",
+  "private": false,
+  "google-docs-mcp": "build/index.js",
+  "files": [
+    "build"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=14"
+  },
+  "scripts": {
+    "build": "tsc && node -e \"require('fs').chmodSync('build/index.js', '755')\"",
+    "watch": "tsc --watch",
+    "inspector": "npx @modelcontextprotocol/inspector build/index.js",
+    "start": "node build/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.8.0",
+    "axios": "^1.7.9",
+    "mcp-framework": "^0.1.12",
+    "okhttp": "^1.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "typescript": "^5.7.2"
+  }
+}
