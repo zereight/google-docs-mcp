@@ -30,3 +30,5 @@ pids
 # dotenv environment variables file
 .env*
 !.env.example
+
+credentials.json
