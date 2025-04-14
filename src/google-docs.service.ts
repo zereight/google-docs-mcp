@@ -21,7 +21,7 @@ export class GoogleDocsService {
   constructor(customCredentialsPath?: string, customTokenPath?: string) {
     const userHomeDir = os.homedir();
     
-    // 환경 변수, 사용자 지정 경로, 기본 경로 순으로 우선순위 적용
+    // Apply priority: Environment variables > custom paths > default paths
     this.tokenPath = 
       process.env.GOOGLE_DOCS_TOKEN_PATH || 
       customTokenPath || 
@@ -32,30 +32,30 @@ export class GoogleDocsService {
       customCredentialsPath || 
       path.join(userHomeDir, '.google-docs-mcp-credentials.json');
     
-    // 현재 디렉토리에서도 credentials.json을 찾기 위한 폴백 설정
+    // Fallback to look for credentials.json in the current directory as well
     this.fallbackCredentialsPath = path.join(process.cwd(), 'credentials.json');
     
-    console.log(`GoogleDocsService 초기화: 
-    - credentials 경로: ${this.credentialsPath}
-    - token 경로: ${this.tokenPath}
-    - fallback 경로: ${this.fallbackCredentialsPath}`);
+    console.log(`Initializing GoogleDocsService: 
+    - Credentials path: ${this.credentialsPath}
+    - Token path: ${this.tokenPath}
+    - Fallback path: ${this.fallbackCredentialsPath}`);
   }
 
   async initialize(): Promise<void> {
     try {
-      // 먼저 홈 디렉토리에서 credentials.json 찾기
+      // First, try finding credentials.json in the home directory
       let credentialsPath = this.credentialsPath;
       
-      // 홈 디렉토리에 없으면 현재 디렉토리에서 찾기
+      // If not in home directory, look in the current directory
       if (!fs.existsSync(this.credentialsPath) && fs.existsSync(this.fallbackCredentialsPath)) {
         credentialsPath = this.fallbackCredentialsPath;
-        // 첫 실행 시 credentials.json을 홈 디렉토리로 복사
+        // On first run, copy credentials.json to the home directory
         try {
           const credentialsData = await fs.promises.readFile(this.fallbackCredentialsPath, 'utf-8');
           await fs.promises.writeFile(this.credentialsPath, credentialsData);
-          console.log(`Credentials.json을 ${this.credentialsPath}로 복사했습니다.`);
+          console.log(`Copied credentials.json to ${this.credentialsPath}.`);
         } catch (copyError) {
-          console.error('credentials.json 복사 실패:', copyError);
+          console.error('Failed to copy credentials.json:', copyError);
         }
       }
       
@@ -76,12 +76,13 @@ export class GoogleDocsService {
         );
         this.oAuth2Client.setCredentials(token);
         await this.setupClients();
-        console.log('인증 완료: 저장된 토큰 사용');
+        console.log('Authentication successful using stored token.');
       } catch (err) {
+        // If token reading fails, need to get a new token
         return await this.getNewToken();
       }
     } catch (error) {
-      console.error('초기화 실패:', error);
+      console.error('Initialization failed:', error);
       throw error;
     }
   }
@@ -92,21 +93,21 @@ export class GoogleDocsService {
       scope: SCOPES,
     });
     
-    // 눈에 잘 띄도록 강조하여 출력
+    // Print prominently
     console.log('\n\n');
     console.log('='.repeat(80));
-    console.log('인증이 필요합니다!');
+    console.log('Authentication required!');
     console.log('='.repeat(80));
-    console.log('아래 URL로 이동하여 인증을 진행해주세요:');
-    console.log('\x1b[1;36m%s\x1b[0m', authUrl); // 청록색으로 강조
-    console.log('\n인증을 진행하려면 `npm run auth` 명령을 실행하세요.');
+    console.log('Please visit the following URL to authenticate:');
+    console.log('\x1b[1;36m%s\x1b[0m', authUrl); // Highlight in cyan
+    console.log('\nTo proceed with authentication, run the `npm run auth` command.');
     console.log('='.repeat(80));
     console.log('\n\n');
     
-    // 오류를 던지기 전에 URL이 충분히 표시되도록 기다림
+    // Wait briefly to ensure the URL is displayed before throwing the error
     await new Promise(resolve => setTimeout(resolve, 500));
     
-    throw new Error('인증이 필요합니다. npm run auth 명령을 실행하여 인증을 완료하세요.');
+    throw new Error('Authentication required. Please run the `npm run auth` command to complete authentication.');
   }
 
   async setAuthCode(code: string): Promise<boolean> {
@@ -117,7 +118,7 @@ export class GoogleDocsService {
       await this.setupClients();
       return true;
     } catch (error) {
-      console.error('인증 코드 설정 실패:', error);
+      console.error('Failed to set authorization code:', error);
       throw error;
     }
   }
@@ -129,7 +130,7 @@ export class GoogleDocsService {
 
   async createDocument(title: string): Promise<string> {
     if (!title) {
-      throw new Error('문서 제목이 필요합니다.');
+      throw new Error('Document title is required.');
     }
 
     const document = await this.docsClient.documents.create({
@@ -143,7 +144,7 @@ export class GoogleDocsService {
 
   async readDocument(documentId: string): Promise<any> {
     if (!documentId) {
-      throw new Error('문서 ID가 필요합니다.');
+      throw new Error('Document ID is required.');
     }
 
     const document = await this.docsClient.documents.get({
@@ -155,11 +156,11 @@ export class GoogleDocsService {
 
   async editDocument(documentId: string, requests: docs_v1.Schema$Request[]): Promise<any> {
     if (!documentId) {
-      throw new Error('문서 ID가 필요합니다.');
+      throw new Error('Document ID is required.');
     }
 
     if (!requests || requests.length === 0) {
-      throw new Error('수정 요청이 필요합니다.');
+      throw new Error('Edit requests are required.');
     }
 
     const result = await this.docsClient.documents.batchUpdate({
@@ -174,7 +175,7 @@ export class GoogleDocsService {
 
   async shareDocumentWithOrg(documentId: string, domain: string, role?: string): Promise<any> {
     if (!documentId || !domain) {
-      throw new Error('문서 ID와 도메인이 필요합니다.');
+      throw new Error('Document ID and domain are required.');
     }
 
     const permission = {
@@ -208,6 +209,103 @@ export class GoogleDocsService {
     }
     
     return text;
+  }
+
+  /**
+   * Updates the entire content of a Google Docs document.
+   * Replaces existing content with the provided text.
+   * @param documentId The ID of the document to update.
+   * @param content The new content for the document.
+   * @returns The result of the batchUpdate operation.
+   */
+  async updateDocument(documentId: string, content: string): Promise<any> {
+    if (!documentId) {
+      throw new Error('Document ID is required.');
+    }
+    if (content === undefined || content === null) {
+        throw new Error('Content to update is required.');
+    }
+    
+    // Determine the length of the document to delete the entire content.
+    // Start index is 1 for Google Docs API.
+    const documentLength = await this.getDocumentLength(documentId);
+    
+    const requests: docs_v1.Schema$Request[] = [];
+
+    // Only add delete request if document is not empty (length > 1, as index starts at 1)
+    if (documentLength > 1) {
+        requests.push({
+            deleteContentRange: {
+                // Delete everything except the first implicit paragraph ending.
+                range: {
+                    startIndex: 1,
+                    endIndex: documentLength,
+                },
+            },
+        });
+    }
+    
+    // Only add insert request if there is content to insert.
+    if (content.length > 0) {
+        requests.push({
+            insertText: {
+                // Insert at the beginning of the document.
+                location: {
+                    index: 1,
+                },
+                text: content,
+            },
+        });
+    }
+    
+    // If there are no requests (e.g., updating an empty doc with empty content), just return.
+    if (requests.length === 0) {
+        console.log("No update needed for document:", documentId);
+        return { message: "No update needed." };
+    }
+
+    console.log(`Updating document ${documentId}...`);
+    const result = await this.docsClient.documents.batchUpdate({
+      documentId,
+      requestBody: {
+        requests,
+      },
+    });
+    console.log(`Document ${documentId} updated successfully.`);
+    return result.data;
+  }
+
+  /**
+   * Updates the title of a Google Docs document.
+   * @param documentId The ID of the document (file ID in Drive) to update.
+   * @param newTitle The new title for the document.
+   * @returns The result of the Drive file update operation.
+   */
+  async updateDocumentTitle(documentId: string, newTitle: string): Promise<any> {
+    if (!documentId) {
+      throw new Error('Document ID is required.');
+    }
+    if (!newTitle) {
+        throw new Error('New title is required.');
+    }
+
+    console.log(`Updating title for document ${documentId} to "${newTitle}"...`);
+    try {
+      const result = await this.driveClient.files.update({
+        fileId: documentId,
+        requestBody: {
+          name: newTitle,
+        },
+      });
+      console.log(`Document ${documentId} title updated successfully.`);
+      return result.data;
+    } catch (error) {
+        console.error(`Failed to update title for document ${documentId}:`, error);
+        if (error instanceof Error) {
+          throw new Error(`Failed to update document title: ${error.message}`);
+        }
+        throw new Error('Failed to update document title.');
+    }
   }
 
   async rewriteDocument(documentId: string, text: string): Promise<any> {
@@ -254,7 +352,7 @@ export class GoogleDocsService {
 
   async readComments(documentId: string): Promise<any> {
     if (!documentId) {
-      throw new Error('문서 ID가 필요합니다.');
+      throw new Error('Document ID is required.');
     }
 
     const result = await this.driveClient.comments.list({
@@ -267,7 +365,7 @@ export class GoogleDocsService {
 
   async createComment(documentId: string, content: string): Promise<any> {
     if (!documentId || !content) {
-      throw new Error('문서 ID와 댓글 내용이 필요합니다.');
+      throw new Error('Document ID and comment content are required.');
     }
 
     const result = await this.driveClient.comments.create({
@@ -282,7 +380,7 @@ export class GoogleDocsService {
 
   async replyComment(documentId: string, commentId: string, content: string): Promise<any> {
     if (!documentId || !commentId || !content) {
-      throw new Error('문서 ID, 댓글 ID, 답글 내용이 필요합니다.');
+      throw new Error('Document ID, comment ID, and reply content are required.');
     }
 
     const result = await this.driveClient.replies.create({
@@ -298,7 +396,7 @@ export class GoogleDocsService {
 
   async deleteReply(documentId: string, commentId: string, replyId: string): Promise<void> {
     if (!documentId || !commentId || !replyId) {
-      throw new Error('문서 ID, 댓글 ID, 답글 ID가 필요합니다.');
+      throw new Error('Document ID, comment ID, and reply ID are required.');
     }
 
     await this.driveClient.replies.delete({
@@ -308,10 +406,11 @@ export class GoogleDocsService {
     });
   }
 
-  // 수동으로 인증 코드를 처리하는 함수 추가
+  // Added function to manually handle the authentication code
   public async manualAuthWithCode(code: string): Promise<boolean> {
     try {
       if (!this.oAuth2Client) {
+        // Initialize oAuth2Client if not already done (e.g., if constructor failed)
         const credentials = JSON.parse(
           await fs.promises.readFile(this.credentialsPath, 'utf-8')
         );
@@ -327,17 +426,17 @@ export class GoogleDocsService {
       const { tokens } = await this.oAuth2Client.getToken(code);
       this.oAuth2Client.setCredentials(tokens);
       
-      // 토큰 저장
+      // Save the token
       await fs.promises.writeFile(this.tokenPath, JSON.stringify(tokens));
-      console.log('토큰이 저장되었습니다:', this.tokenPath);
+      console.log('Token saved to:', this.tokenPath);
       
-      // 클라이언트 설정
+      // Set up clients
       this.docsClient = google.docs({ version: 'v1', auth: this.oAuth2Client });
       this.driveClient = google.drive({ version: 'v3', auth: this.oAuth2Client });
       
       return true;
     } catch (error) {
-      console.error('인증 코드 처리 실패:', error);
+      console.error('Failed to process authentication code:', error);
       throw error;
     }
   }

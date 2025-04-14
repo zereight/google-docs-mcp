@@ -65,6 +65,22 @@ Follow the [detailed guide](temp/credentials-guide-en.md) mentioned in the insta
      - `documentId` (string): ID of the document to read
    - Returns: Document content and metadata
 
+3. `google_docs_update_document`
+
+   - Update a Google Docs document 📝
+   - Inputs:
+     - `documentId` (string): ID of the document to update
+     - `content` (string): New content for the document
+   - Returns: Update status or confirmation
+
+4. `google_docs_update_document_title`
+
+   - Update the title of a Google Docs document ✏️
+   - Inputs:
+     - `documentId` (string): ID of the document to update the title for
+     - `newTitle` (string): The new title for the document
+   - Returns: Update status or confirmation
+
 ## License
 
 MIT License 

@@ -14,7 +14,7 @@ export class GoogleDocsMcp {
   private googleDocsService: GoogleDocsService;
 
   constructor() {
-    console.error('GoogleDocsMcp: 생성자 시작');
+    console.error('GoogleDocsMcp: Constructor start');
     this.server = new Server(
       {
         name: 'google-docs-mcp',
@@ -27,30 +27,30 @@ export class GoogleDocsMcp {
         }
       }
     );
-    console.error('GoogleDocsMcp: 서버 인스턴스 생성 완료');
+    console.error('GoogleDocsMcp: Server instance created');
 
-    // 환경 변수를 통해 경로 설정을 받을 수 있는 GoogleDocsService 생성
+    // Create GoogleDocsService instance, allowing path config via env vars
     this.googleDocsService = new GoogleDocsService();
-    console.error('GoogleDocsMcp: GoogleDocsService 인스턴스 생성 완료');
+    console.error('GoogleDocsMcp: GoogleDocsService instance created');
 
     this.setupToolHandlers();
-    console.error('GoogleDocsMcp: 도구 핸들러 설정 완료');
+    console.error('GoogleDocsMcp: Tool handlers configured');
 
     this.server.onerror = (error) => console.error('[google-docs-mcp Error]', error);
     process.on('SIGINT', async () => {
       await this.server.close();
       process.exit(0);
     });
-    console.error('GoogleDocsMcp: 생성자 완료');
+    console.error('GoogleDocsMcp: Constructor end');
   }
 
   async initialize(): Promise<void> {
     try {
       await this.googleDocsService.initialize();
     } catch (err) {
-      console.error('GoogleDocsMcp: 인증 초기화 실패, 하지만 서버는 계속 실행합니다.');
+      console.error('GoogleDocsMcp: Authentication initialization failed, but server continues.');
       if (err instanceof Error) {
-        console.error('- 인증 오류:', err.message);
+        console.error('- Authentication Error:', err.message);
       }
     }
   }
@@ -71,26 +71,92 @@ export class GoogleDocsMcp {
         },
         {
           name: 'google_docs_read_document',
-          description: 'Google Docs 문서를 읽습니다.',
+          description: 'Reads a Google Docs document.',
           inputSchema: {
             type: 'object',
             properties: {
               documentId: {
                 type: 'string',
-                description: '읽을 문서의 ID'
+                description: 'The ID of the document to read'
               }
             },
             required: ['documentId']
           },
           handler: async (args: any) => {
             if (typeof args?.documentId !== 'string') {
-              throw new McpError(ErrorCode.InvalidParams, '문서 ID가 필요합니다.');
+              throw new McpError(ErrorCode.InvalidParams, 'Document ID is required.');
             }
 
             const text = await this.googleDocsService.readDocumentText(args.documentId);
             return {
               result: {
                 text
+              }
+            };
+          }
+        },
+        {
+          name: 'google_docs_update_document',
+          description: 'Updates a Google Docs document.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              documentId: {
+                type: 'string',
+                description: 'The ID of the document to update'
+              },
+              content: {
+                type: 'string',
+                description: 'The new content for the document'
+              }
+            },
+            required: ['documentId', 'content']
+          },
+          handler: async (args: any) => {
+            if (typeof args?.documentId !== 'string') {
+              throw new McpError(ErrorCode.InvalidParams, 'Document ID is required.');
+            }
+            if (typeof args?.content !== 'string') {
+              throw new McpError(ErrorCode.InvalidParams, 'Document content is required.');
+            }
+
+            await this.googleDocsService.updateDocument(args.documentId, args.content);
+            return {
+              result: {
+                message: 'Document updated successfully.'
+              }
+            };
+          }
+        },
+        {
+          name: 'google_docs_update_document_title',
+          description: 'Updates the title of a Google Docs document.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              documentId: {
+                type: 'string',
+                description: 'The ID of the document to update the title for'
+              },
+              newTitle: {
+                type: 'string',
+                description: 'The new title for the document'
+              }
+            },
+            required: ['documentId', 'newTitle']
+          },
+          handler: async (args: any) => {
+            if (typeof args?.documentId !== 'string') {
+              throw new McpError(ErrorCode.InvalidParams, 'Document ID is required.');
+            }
+            if (typeof args?.newTitle !== 'string') {
+              throw new McpError(ErrorCode.InvalidParams, 'New title is required.');
+            }
+
+            await this.googleDocsService.updateDocumentTitle(args.documentId, args.newTitle);
+            return {
+              result: {
+                message: 'Document title updated successfully.'
               }
             };
           }
@@ -106,23 +172,69 @@ export class GoogleDocsMcp {
         
         case 'google_docs_read_document':
           if (typeof request.params.arguments?.documentId !== 'string') {
-            throw new McpError(ErrorCode.InvalidParams, '문서 ID가 필요합니다.');
+            throw new McpError(ErrorCode.InvalidParams, 'Document ID is required.');
           }
-          console.error(`문서 읽기 시도: ${request.params.arguments.documentId}`);
+          console.error(`Attempting to read document: ${request.params.arguments.documentId}`);
           try {
             const document = await this.googleDocsService.readDocument(request.params.arguments.documentId);
             const text = await this.googleDocsService.readDocumentText(request.params.arguments.documentId);
             return {
               content: [
-                { type: 'text', text: `제목: ${document.title}\n\n${text}` }
+                { type: 'text', text: `Title: ${document.title}\n\n${text}` }
               ]
             };
           } catch (error) {
-            console.error('문서 읽기 오류:', error);
+            console.error('Error reading document:', error);
             if (error instanceof Error) {
-              throw new McpError(ErrorCode.InternalError, `문서 읽기 실패: ${error.message}`);
+              throw new McpError(ErrorCode.InternalError, `Failed to read document: ${error.message}`);
             }
-            throw new McpError(ErrorCode.InternalError, '문서 읽기 실패');
+            throw new McpError(ErrorCode.InternalError, 'Failed to read document');
+          }
+
+        case 'google_docs_update_document':
+          if (typeof request.params.arguments?.documentId !== 'string') {
+            throw new McpError(ErrorCode.InvalidParams, 'Document ID is required.');
+          }
+          if (typeof request.params.arguments?.content !== 'string') {
+            throw new McpError(ErrorCode.InvalidParams, 'Document content is required.');
+          }
+          console.error(`Attempting to update document: ${request.params.arguments.documentId}`);
+          try {
+            await this.googleDocsService.updateDocument(request.params.arguments.documentId, request.params.arguments.content);
+            return {
+              content: [
+                { type: 'text', text: 'Document updated successfully.' }
+              ]
+            };
+          } catch (error) {
+            console.error('Error updating document:', error);
+            if (error instanceof Error) {
+              throw new McpError(ErrorCode.InternalError, `Failed to update document: ${error.message}`);
+            }
+            throw new McpError(ErrorCode.InternalError, 'Failed to update document');
+          }
+
+        case 'google_docs_update_document_title':
+          if (typeof request.params.arguments?.documentId !== 'string') {
+            throw new McpError(ErrorCode.InvalidParams, 'Document ID is required.');
+          }
+          if (typeof request.params.arguments?.newTitle !== 'string') {
+            throw new McpError(ErrorCode.InvalidParams, 'New title is required.');
+          }
+          console.error(`Attempting to update title for document: ${request.params.arguments.documentId}`);
+          try {
+            await this.googleDocsService.updateDocumentTitle(request.params.arguments.documentId, request.params.arguments.newTitle);
+            return {
+              content: [
+                { type: 'text', text: 'Document title updated successfully.' }
+              ]
+            };
+          } catch (error) {
+            console.error('Error updating document title:', error);
+            if (error instanceof Error) {
+              throw new McpError(ErrorCode.InternalError, `Failed to update document title: ${error.message}`);
+            }
+            throw new McpError(ErrorCode.InternalError, 'Failed to update document title');
           }
 
         default:
@@ -133,25 +245,25 @@ export class GoogleDocsMcp {
 
   async run() {
     try {
-      console.error('GoogleDocsMcp: 인증 초기화 중...');
+      console.error('GoogleDocsMcp: Initializing authentication...');
       
-      // 인증 초기화 시도
+      // Attempt authentication initialization
       try {
         await this.initialize();
-        console.error('GoogleDocsMcp: 인증 초기화 완료');
+        console.error('GoogleDocsMcp: Authentication initialized successfully');
       } catch (authError) {
-        console.error('GoogleDocsMcp: 인증 초기화 중 오류 발생:', authError instanceof Error ? authError.message : authError);
-        // 인증 오류가 발생해도 계속 진행
+        console.error('GoogleDocsMcp: Error during authentication initialization:', authError instanceof Error ? authError.message : authError);
+        // Continue even if auth fails
       }
       
       const transport = new StdioServerTransport();
       await this.server.connect(transport);
       console.error('google-docs-mcp running on stdio');
     } catch (error) {
-      console.error('GoogleDocsMcp 초기화 오류:', error);
+      console.error('GoogleDocsMcp Initialization Error:', error);
       if (error instanceof Error) {
-        console.error('오류 메시지:', error.message);
-        console.error('오류 스택:', error.stack);
+        console.error('Error Message:', error.message);
+        console.error('Error Stack:', error.stack);
       }
     }
   }

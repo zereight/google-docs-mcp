@@ -11,6 +11,7 @@
    - In the left sidebar, select 'APIs & Services' → 'Library'
    - Search for and enable both "Google Docs API" and "Google Drive API"
    ![Google Cloud Console Screenshot](1.png)
+   ![Google Cloud Console Screenshot](3.png)
 
 4. Set Up OAuth Consent Screen
    - In the left sidebar, select 'APIs & Services' → 'OAuth consent screen'
