@@ -32,3 +32,4 @@ pids
 !.env.example
 
 credentials.json
+token.json

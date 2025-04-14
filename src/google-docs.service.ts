@@ -1,171 +1,296 @@
-import path from 'path';
-import os from 'os';
-import fs from 'fs';
 import { google, docs_v1, drive_v3 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
-import { authenticate } from '@google-cloud/local-auth';
+import * as fs from 'fs';
+import * as path from 'path';
 
-// Define the scopes needed for Docs and Drive APIs
 const SCOPES = [
   'https://www.googleapis.com/auth/documents',
-  'https://www.googleapis.com/auth/drive', // Needed for sharing, comments, etc.
+  'https://www.googleapis.com/auth/drive',
+  'https://www.googleapis.com/auth/drive.file'
 ];
 
-// Define paths for credentials and token storage
-const CREDENTIALS_PATH = path.join(process.cwd(), 'credentials.json'); // Assumes credentials.json is in the project root
-const TOKEN_PATH = path.join(os.homedir(), '.google_docs_mcp_token.json'); // Store token in user's home directory
-
 export class GoogleDocsService {
-  private oauth2Client: OAuth2Client | null = null;
-  private docs: docs_v1.Docs | null = null;
-  private drive: drive_v3.Drive | null = null;
+  private docsClient!: docs_v1.Docs;
+  private driveClient!: drive_v3.Drive;
+  private oAuth2Client!: OAuth2Client;
+  private readonly tokenPath: string;
+  private readonly credentialsPath: string;
 
   constructor() {
-    // Initialization logic will go here, likely called asynchronously
+    const projectRoot = process.cwd();
+    this.tokenPath = path.join(projectRoot, 'token.json');
+    this.credentialsPath = path.join(projectRoot, 'credentials.json');
   }
 
-  /**
-   * Authenticates the user using OAuth 2.0 and initializes API clients.
-   */
   async initialize(): Promise<void> {
     try {
-      this.oauth2Client = await this.loadSavedCredentialsIfExist();
-      if (!this.oauth2Client) {
-        this.oauth2Client = await this.authenticateUser();
+      const credentials = JSON.parse(
+        await fs.promises.readFile(this.credentialsPath, 'utf-8')
+      );
+
+      const { client_secret, client_id, redirect_uris } = credentials.installed;
+      this.oAuth2Client = new google.auth.OAuth2(
+        client_id,
+        client_secret,
+        redirect_uris[0]
+      );
+
+      try {
+        const token = JSON.parse(
+          await fs.promises.readFile(this.tokenPath, 'utf-8')
+        );
+        this.oAuth2Client.setCredentials(token);
+        await this.setupClients();
+        console.log('인증 완료: 저장된 토큰 사용');
+      } catch (err) {
+        return await this.getNewToken();
       }
-      google.options({ auth: this.oauth2Client });
-      this.docs = google.docs({ version: 'v1', auth: this.oauth2Client });
-      this.drive = google.drive({ version: 'v3', auth: this.oauth2Client });
-      console.log('Google Docs and Drive services initialized successfully.');
     } catch (error) {
-      console.error('Error initializing Google services:', error);
-      throw new Error('Failed to initialize Google services.');
+      console.error('초기화 실패:', error);
+      throw error;
     }
   }
 
-  /**
-   * Loads previously saved credentials from the token file.
-   */
-  private async loadSavedCredentialsIfExist(): Promise<OAuth2Client | null> {
-    try {
-      const content = await fs.promises.readFile(TOKEN_PATH, 'utf8');
-      const credentials = JSON.parse(content);
-      return google.auth.fromJSON(credentials) as OAuth2Client;
-    } catch (err) {
-      // If token file doesn't exist or is invalid, return null
-      console.log('Token file not found or invalid, proceeding with authentication.');
-      return null;
-    }
-  }
-
-  /**
-   * Saves credentials to a file for future use.
-   */
-  private async saveCredentials(client: OAuth2Client): Promise<void> {
-    try {
-      const content = await fs.promises.readFile(CREDENTIALS_PATH, 'utf8');
-      const keys = JSON.parse(content);
-      const key = keys.installed || keys.web; // Handle different credential types
-      const payload = JSON.stringify({
-        type: 'authorized_user',
-        client_id: key.client_id,
-        client_secret: key.client_secret,
-        refresh_token: client.credentials.refresh_token,
-      });
-      await fs.promises.writeFile(TOKEN_PATH, payload);
-      console.log(`Token stored to ${TOKEN_PATH}`);
-    } catch (error) {
-        console.error('Error saving credentials:', error);
-        throw new Error('Failed to save credentials');
-    }
-  }
-
-  /**
-   * Initiates the OAuth 2.0 flow to get user authorization.
-   */
-  private async authenticateUser(): Promise<OAuth2Client> {
-    console.log('Starting authentication flow...');
-    const client = await authenticate({
-      scopes: SCOPES,
-      keyfilePath: CREDENTIALS_PATH,
+  private async getNewToken(): Promise<void> {
+    const authUrl = this.oAuth2Client.generateAuthUrl({
+      access_type: 'offline',
+      scope: SCOPES,
     });
-    if (client.credentials) {
-      await this.saveCredentials(client);
-      console.log('Authentication successful.');
-      return client;
+    console.log('인증 URL로 이동하여 인증을 진행해주세요:');
+    console.log(authUrl);
+    throw new Error('인증이 필요합니다. google_docs_auth 도구로 인증 코드를 입력해주세요.');
+  }
+
+  async setAuthCode(code: string): Promise<boolean> {
+    try {
+      const { tokens } = await this.oAuth2Client.getToken(code);
+      this.oAuth2Client.setCredentials(tokens);
+      await fs.promises.writeFile(this.tokenPath, JSON.stringify(tokens));
+      await this.setupClients();
+      return true;
+    } catch (error) {
+      console.error('인증 코드 설정 실패:', error);
+      throw error;
     }
-    throw new Error('Authentication failed: No credentials received.');
   }
 
-  // --- Placeholder Methods for Google Docs/Drive Functionality ---
-
-  async createDocument(title: string): Promise<docs_v1.Schema$Document | undefined> {
-    if (!this.docs) throw new Error('Docs service not initialized.');
-    console.log(`Attempting to create document with title: ${title}`);
-    // Implementation to be added
-    return undefined; // Placeholder
+  private async setupClients(): Promise<void> {
+    this.docsClient = google.docs({ version: 'v1', auth: this.oAuth2Client });
+    this.driveClient = google.drive({ version: 'v3', auth: this.oAuth2Client });
   }
 
-  async shareDocumentWithOrg(documentId: string, domain: string, role: string = 'writer'): Promise<drive_v3.Schema$Permission | undefined> {
-      if (!this.drive) throw new Error('Drive service not initialized.');
-      console.log(`Attempting to share document ${documentId} with domain ${domain}`);
-      // Implementation to be added
-      return undefined; // Placeholder
+  async createDocument(title: string): Promise<string> {
+    if (!title) {
+      throw new Error('문서 제목이 필요합니다.');
+    }
+
+    const document = await this.docsClient.documents.create({
+      requestBody: {
+        title,
+      },
+    });
+
+    return document.data.documentId || '';
   }
 
-  async readDocument(documentId: string): Promise<docs_v1.Schema$Document | undefined> {
-    if (!this.docs) throw new Error('Docs service not initialized.');
-    console.log(`Attempting to read document: ${documentId}`);
-    // Implementation to be added
-    return undefined; // Placeholder
+  async readDocument(documentId: string): Promise<any> {
+    if (!documentId) {
+      throw new Error('문서 ID가 필요합니다.');
+    }
+
+    const document = await this.docsClient.documents.get({
+      documentId,
+    });
+
+    return document.data;
   }
 
-  async readDocumentText(documentId: string): Promise<string | undefined> {
-      const doc = await this.readDocument(documentId);
-      // Implementation to extract text to be added
-      return undefined; // Placeholder
+  async editDocument(documentId: string, requests: docs_v1.Schema$Request[]): Promise<any> {
+    if (!documentId) {
+      throw new Error('문서 ID가 필요합니다.');
+    }
+
+    if (!requests || requests.length === 0) {
+      throw new Error('수정 요청이 필요합니다.');
+    }
+
+    const result = await this.docsClient.documents.batchUpdate({
+      documentId,
+      requestBody: {
+        requests,
+      },
+    });
+
+    return result.data;
   }
 
+  async shareDocumentWithOrg(documentId: string, domain: string, role?: string): Promise<any> {
+    if (!documentId || !domain) {
+      throw new Error('문서 ID와 도메인이 필요합니다.');
+    }
 
-  async editDocument(documentId: string, requests: docs_v1.Schema$Request[]): Promise<docs_v1.Schema$BatchUpdateDocumentResponse | undefined> {
-    if (!this.docs) throw new Error('Docs service not initialized.');
-    console.log(`Attempting to edit document: ${documentId}`);
-    // Implementation to be added
-    return undefined; // Placeholder
+    const permission = {
+      type: 'domain',
+      role: role || 'reader',
+      domain,
+    };
+
+    const result = await this.driveClient.permissions.create({
+      fileId: documentId,
+      requestBody: permission,
+    });
+
+    return result.data;
   }
 
-  async rewriteDocument(documentId: string, text: string): Promise<docs_v1.Schema$BatchUpdateDocumentResponse | undefined> {
-      if (!this.docs) throw new Error('Docs service not initialized.');
-      console.log(`Attempting to rewrite document: ${documentId}`);
-      // Implementation to be added
-      return undefined; // Placeholder
+  async readDocumentText(documentId: string): Promise<string> {
+    const document = await this.readDocument(documentId);
+    let text = '';
+    
+    if (document.body?.content) {
+      document.body.content.forEach((element: any) => {
+        if (element.paragraph) {
+          element.paragraph.elements?.forEach((paragraphElement: any) => {
+            if (paragraphElement.textRun?.content) {
+              text += paragraphElement.textRun.content;
+            }
+          });
+        }
+      });
+    }
+    
+    return text;
   }
 
-  async readComments(documentId: string): Promise<drive_v3.Schema$CommentList | undefined> {
-      if (!this.drive) throw new Error('Drive service not initialized.');
-      console.log(`Attempting to read comments for document: ${documentId}`);
-      // Implementation to be added
-      return undefined; // Placeholder
+  async rewriteDocument(documentId: string, text: string): Promise<any> {
+    const requests = [
+      {
+        deleteContentRange: {
+          range: {
+            startIndex: 1,
+            endIndex: await this.getDocumentLength(documentId),
+          },
+        },
+      },
+      {
+        insertText: {
+          location: {
+            index: 1,
+          },
+          text,
+        },
+      },
+    ];
+
+    return this.editDocument(documentId, requests);
   }
 
-  async createComment(documentId: string, content: string): Promise<drive_v3.Schema$Comment | undefined> {
-      if (!this.drive) throw new Error('Drive service not initialized.');
-      console.log(`Attempting to create comment on document: ${documentId}`);
-      // Implementation to be added
-      return undefined; // Placeholder
+  private async getDocumentLength(documentId: string): Promise<number> {
+    const document = await this.readDocument(documentId);
+    let length = 1;
+
+    if (document.body?.content) {
+      document.body.content.forEach((element: any) => {
+        if (element.paragraph) {
+          element.paragraph.elements?.forEach((paragraphElement: any) => {
+            if (paragraphElement.textRun?.content) {
+              length += paragraphElement.textRun.content.length;
+            }
+          });
+        }
+      });
+    }
+
+    return length;
   }
 
-  async replyComment(documentId: string, commentId: string, content: string): Promise<drive_v3.Schema$Reply | undefined> {
-      if (!this.drive) throw new Error('Drive service not initialized.');
-      console.log(`Attempting to reply to comment ${commentId} on document: ${documentId}`);
-      // Implementation to be added
-      return undefined; // Placeholder
+  async readComments(documentId: string): Promise<any> {
+    if (!documentId) {
+      throw new Error('문서 ID가 필요합니다.');
+    }
+
+    const result = await this.driveClient.comments.list({
+      fileId: documentId,
+      fields: '*',
+    });
+
+    return result.data;
   }
 
-  async deleteReply(documentId: string, commentId: string, replyId: string): Promise<void | undefined> {
-      if (!this.drive) throw new Error('Drive service not initialized.');
-      console.log(`Attempting to delete reply ${replyId} on comment ${commentId} in document: ${documentId}`);
-      // Implementation to be added
-      return undefined; // Placeholder
+  async createComment(documentId: string, content: string): Promise<any> {
+    if (!documentId || !content) {
+      throw new Error('문서 ID와 댓글 내용이 필요합니다.');
+    }
+
+    const result = await this.driveClient.comments.create({
+      fileId: documentId,
+      requestBody: {
+        content,
+      },
+    });
+
+    return result.data;
+  }
+
+  async replyComment(documentId: string, commentId: string, content: string): Promise<any> {
+    if (!documentId || !commentId || !content) {
+      throw new Error('문서 ID, 댓글 ID, 답글 내용이 필요합니다.');
+    }
+
+    const result = await this.driveClient.replies.create({
+      fileId: documentId,
+      commentId,
+      requestBody: {
+        content,
+      },
+    });
+
+    return result.data;
+  }
+
+  async deleteReply(documentId: string, commentId: string, replyId: string): Promise<void> {
+    if (!documentId || !commentId || !replyId) {
+      throw new Error('문서 ID, 댓글 ID, 답글 ID가 필요합니다.');
+    }
+
+    await this.driveClient.replies.delete({
+      fileId: documentId,
+      commentId,
+      replyId,
+    });
+  }
+
+  // 수동으로 인증 코드를 처리하는 함수 추가
+  public async manualAuthWithCode(code: string): Promise<boolean> {
+    try {
+      if (!this.oAuth2Client) {
+        const credentials = JSON.parse(
+          await fs.promises.readFile(this.credentialsPath, 'utf-8')
+        );
+
+        const { client_secret, client_id, redirect_uris } = credentials.installed;
+        this.oAuth2Client = new google.auth.OAuth2(
+          client_id,
+          client_secret,
+          redirect_uris[0]
+        );
+      }
+
+      const { tokens } = await this.oAuth2Client.getToken(code);
+      this.oAuth2Client.setCredentials(tokens);
+      
+      // 토큰 저장
+      await fs.promises.writeFile(this.tokenPath, JSON.stringify(tokens));
+      console.log('토큰이 저장되었습니다:', this.tokenPath);
+      
+      // 클라이언트 설정
+      this.docsClient = google.docs({ version: 'v1', auth: this.oAuth2Client });
+      this.driveClient = google.drive({ version: 'v3', auth: this.oAuth2Client });
+      
+      return true;
+    } catch (error) {
+      console.error('인증 코드 처리 실패:', error);
+      throw error;
+    }
   }
 } 
