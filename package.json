@@ -1,26 +1,37 @@
 {
   "name": "google-docs-mcp",
   "version": "1.0.0",
-  "description": "MCP server",
-  "license": "MIT",
-  "author": "",
-  "type": "module",
-  "private": false,
-  "google-docs-mcp": "build/index.js",
+  "description": "Model Context Protocol for Google Docs integration",
+  "main": "build/index.js",
+  "bin": {
+    "google-docs-mcp": "./build/index.js"
+  },
   "files": [
     "build"
   ],
+  "engines": {
+    "node": ">=16"
+  },
+  "keywords": [
+    "mcp",
+    "google-docs",
+    "model-context-protocol",
+    "ai"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "type": "module",
+  "private": false,
+  "google-docs-mcp": "build/index.js",
   "publishConfig": {
     "access": "public"
-  },
-  "engines": {
-    "node": ">=14"
   },
   "scripts": {
     "build": "tsc && node -e \"require('fs').chmodSync('build/index.js', '755')\"",
     "watch": "tsc --watch",
     "inspector": "npx @modelcontextprotocol/inspector build/index.js",
-    "start": "node build/index.js"
+    "start": "node build/index.js",
+    "auth": "tsc && node build/auth-server.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.8.0",
@@ -28,6 +39,7 @@
     "google-auth-library": "^9.15.1",
     "googleapis": "^148.0.0",
     "node-fetch": "^3.3.2",
+    "open": "^10.1.0",
     "zod-to-json-schema": "^3.23.5"
   },
   "devDependencies": {

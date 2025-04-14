@@ -2,6 +2,7 @@ import { google, docs_v1, drive_v3 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 
 const SCOPES = [
   'https://www.googleapis.com/auth/documents',
@@ -15,17 +16,51 @@ export class GoogleDocsService {
   private oAuth2Client!: OAuth2Client;
   private readonly tokenPath: string;
   private readonly credentialsPath: string;
+  private readonly fallbackCredentialsPath: string;
 
-  constructor() {
-    const projectRoot = process.cwd();
-    this.tokenPath = path.join(projectRoot, 'token.json');
-    this.credentialsPath = path.join(projectRoot, 'credentials.json');
+  constructor(customCredentialsPath?: string, customTokenPath?: string) {
+    const userHomeDir = os.homedir();
+    
+    // 환경 변수, 사용자 지정 경로, 기본 경로 순으로 우선순위 적용
+    this.tokenPath = 
+      process.env.GOOGLE_DOCS_TOKEN_PATH || 
+      customTokenPath || 
+      path.join(process.cwd(), 'token.json');
+    
+    this.credentialsPath = 
+      process.env.GOOGLE_DOCS_CREDENTIALS_PATH || 
+      customCredentialsPath || 
+      path.join(userHomeDir, '.google-docs-mcp-credentials.json');
+    
+    // 현재 디렉토리에서도 credentials.json을 찾기 위한 폴백 설정
+    this.fallbackCredentialsPath = path.join(process.cwd(), 'credentials.json');
+    
+    console.log(`GoogleDocsService 초기화: 
+    - credentials 경로: ${this.credentialsPath}
+    - token 경로: ${this.tokenPath}
+    - fallback 경로: ${this.fallbackCredentialsPath}`);
   }
 
   async initialize(): Promise<void> {
     try {
+      // 먼저 홈 디렉토리에서 credentials.json 찾기
+      let credentialsPath = this.credentialsPath;
+      
+      // 홈 디렉토리에 없으면 현재 디렉토리에서 찾기
+      if (!fs.existsSync(this.credentialsPath) && fs.existsSync(this.fallbackCredentialsPath)) {
+        credentialsPath = this.fallbackCredentialsPath;
+        // 첫 실행 시 credentials.json을 홈 디렉토리로 복사
+        try {
+          const credentialsData = await fs.promises.readFile(this.fallbackCredentialsPath, 'utf-8');
+          await fs.promises.writeFile(this.credentialsPath, credentialsData);
+          console.log(`Credentials.json을 ${this.credentialsPath}로 복사했습니다.`);
+        } catch (copyError) {
+          console.error('credentials.json 복사 실패:', copyError);
+        }
+      }
+      
       const credentials = JSON.parse(
-        await fs.promises.readFile(this.credentialsPath, 'utf-8')
+        await fs.promises.readFile(credentialsPath, 'utf-8')
       );
 
       const { client_secret, client_id, redirect_uris } = credentials.installed;
@@ -56,9 +91,22 @@ export class GoogleDocsService {
       access_type: 'offline',
       scope: SCOPES,
     });
-    console.log('인증 URL로 이동하여 인증을 진행해주세요:');
-    console.log(authUrl);
-    throw new Error('인증이 필요합니다. google_docs_auth 도구로 인증 코드를 입력해주세요.');
+    
+    // 눈에 잘 띄도록 강조하여 출력
+    console.log('\n\n');
+    console.log('='.repeat(80));
+    console.log('인증이 필요합니다!');
+    console.log('='.repeat(80));
+    console.log('아래 URL로 이동하여 인증을 진행해주세요:');
+    console.log('\x1b[1;36m%s\x1b[0m', authUrl); // 청록색으로 강조
+    console.log('\n인증을 진행하려면 `npm run auth` 명령을 실행하세요.');
+    console.log('='.repeat(80));
+    console.log('\n\n');
+    
+    // 오류를 던지기 전에 URL이 충분히 표시되도록 기다림
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    throw new Error('인증이 필요합니다. npm run auth 명령을 실행하여 인증을 완료하세요.');
   }
 
   async setAuthCode(code: string): Promise<boolean> {

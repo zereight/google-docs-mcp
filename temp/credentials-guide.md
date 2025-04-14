@@ -34,44 +34,29 @@ Google Docs MCP 인증 설정 방법
 
 6. 인증 파일 적용
    - 다운로드된 JSON 파일의 이름을 'credentials.json'으로 변경
-   - 이 파일을 프로젝트 루트 디렉토리에 이동
-   
-7. 필수 패키지 설치
-   - 터미널에서 프로젝트 디렉토리로 이동
-   - `npm install googleapis google-auth-library` 실행
-  
-8. 서비스 초기화 및 인증
+   - 이 파일을 프로젝트 루트 디렉토리에 복사
+   - 중요: 파일 이름은 반드시 'credentials.json'이어야 하며 프로젝트 루트 디렉토리에 직접 위치해야 합니다
+
+7. 인증 실행
    - `npm run build` 실행하여 코드 빌드
-   - `npm run start` 실행하여 서비스 시작
-   - 콘솔에 출력된 인증 URL을 확인:
-      예:
-     ```
-     인증 URL로 이동하여 인증을 진행해주세요:
-     https://accounts.google.com/o/oauth2/v2/auth?access_type=offline&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdocuments%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive.file&response_type=code&client_id=[YOUR_CLIENT_ID]&redirect_uri=http%3A%2F%2Flocalhost
-     ```
+   - `npm run auth` 실행하여 인증 프로세스 시작
+   - 브라우저가 자동으로 열리고 인증 URL로 이동합니다
+   - Google 계정으로 로그인하고 요청된 권한을 허용합니다
+   - 인증이 완료되면 자동으로 localhost로 리디렉션되고 토큰이 저장됩니다
+   - 브라우저에 성공 페이지가 표시되고 스크립트가 자동으로 종료됩니다
+   - 토큰은 프로젝트 디렉토리의 `token.json` 파일에 저장됩니다
 
-9. 인증 코드 획득
-   - 브라우저에서 인증 URL을 열기
-   - Google 계정으로 로그인하고 권한 부여
-   - 리디렉션된 URL(`http://localhost/?code=4/...`)에서 `code=` 뒤의 값이 인증 코드
-   - 인증 코드를 복사
-
-10. 인증 코드 적용
-    - 서비스 중지 후 인증 스크립트 실행:
-    - `node build/auth-script.js [인증_코드]` 명령 실행
-    - 성공 메시지 확인:
-      ```
-      인증이 성공적으로 완료되었습니다!
-      토큰이 저장되었습니다: /Users/[사용자명]/Documents/google-docs-mcp/token.json
-      ```
-
-11. 문서 읽기 테스트
-    - 문서 ID를 확인 (Google Docs URL에서 `/d/` 뒤, 다음 `/` 전까지의 값)
-    - 다음 명령으로 문서 읽기:
-    - `node build/read-document.js [문서_ID]`
-    - 문서 제목과 내용이 출력됨
-
-참고: 
-- 인증 토큰은 `token.json` 파일에 저장되며, 이후 실행 시 자동으로 사용됩니다.
-- 테스트 계정으로만 OAuth 동의 화면이 설정된 경우, 테스트 사용자로 추가된 계정만 인증할 수 있습니다.
-- 토큰이 만료되면 인증 과정(8-10단계)을 다시 수행해야 합니다. 
+8. 서비스 실행
+   - MCP 서버의 구성 파일(일반적으로 ~/.cursor/mcp.json)에 서비스를 등록합니다:
+   ```json
+   "google-docs": {
+      "command": "node",
+      "args": ["/경로/google-docs-mcp/build/index.js"],
+      "env": {
+        "GOOGLE_DOCS_CREDENTIALS_PATH": "/경로/google-docs-mcp/credentials.json",
+        "GOOGLE_DOCS_TOKEN_PATH": "/경로/google-docs-mcp/token.json"
+      }
+   }
+   ```
+   - 경로는 실제 프로젝트 위치로 변경하세요
+   - 등록 후 MCP 서버가 자동으로 서비스를 인식하여 사용할 수 있습니다
